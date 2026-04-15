@@ -635,13 +635,24 @@ class Block(nn.Module):
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
+        self.gate = nn.Linear(dim, 1, bias=False)
 
     def forward(self, x: Tensor, x0: Tensor) -> Tensor:
         mix = self.resid_mix.to(dtype=x.dtype)
         x = mix[0][None, None, :] * x + mix[1][None, None, :] * x0
+
         attn_out = self.attn(self.attn_norm(x))
-        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
-        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
+        mlp_out = self.mlp(self.mlp_norm(x))
+
+        update = (
+            self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out +
+            self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out
+        )
+
+        gate = torch.sigmoid(self.gate(x))  # (B, T, 1)
+
+        x = x + gate * update
+
         return x
 
 
