@@ -649,7 +649,7 @@ class Block(nn.Module):
             self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out
         )
 
-        gate = torch.sigmoid(self.gate(x))  # (B, T, 1)
+        gate = torch.sigmoid(10.0 * self.gate(x))  # (B, T, 1)
 
         x = x + gate * update
 
