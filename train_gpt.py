@@ -724,7 +724,15 @@ class GPT(nn.Module):
         for i in range(self.num_decoder_layers):
             if skips:
                 x = x + self.skip_weights[i].to(dtype=x.dtype)[None, None, :] * skips.pop()
-            x = self.blocks[self.num_encoder_layers + i](x, x0)
+
+            block = self.blocks[self.num_encoder_layers + i]
+
+            # selective recurrence on last 2 decoder layers
+            if i >= self.num_decoder_layers - 2:
+                for _ in range(2):
+                    x = block(x, x0)
+            else:
+                x = block(x, x0)
 
         x = self.final_norm(x).reshape(-1, x.size(-1))
         targets = target_ids.reshape(-1)
