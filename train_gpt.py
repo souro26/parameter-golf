@@ -632,11 +632,10 @@ class Block(nn.Module):
         self.mlp_norm = RMSNorm()
         self.attn = CausalSelfAttention(dim, num_heads, num_kv_heads, rope_base, qk_gain_init)
         self.mlp = MLP(dim, mlp_mult)
+
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
-        self.gate = nn.Linear(dim, 1)
-        nn.init.constant_(self.gate.bias, -2.0)
 
     def forward(self, x: Tensor, x0: Tensor) -> Tensor:
         mix = self.resid_mix.to(dtype=x.dtype)
@@ -650,9 +649,7 @@ class Block(nn.Module):
             self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out
         )
 
-        gate = torch.sigmoid(10.0 * self.gate(x))  # (B, T, 1)
-
-        x = x + gate * update
+        x = x + update
 
         return x
 
@@ -727,10 +724,10 @@ class GPT(nn.Module):
 
             block = self.blocks[self.num_encoder_layers + i]
 
-            # selective recurrence on last 2 decoder layers
+            # selective recurrence ONLY on last 2 layers
             if i >= self.num_decoder_layers - 2:
-                for _ in range(2):
-                    x = block(x, x0)
+                x = block(x, x0)
+                x = block(x, x0)  # 2 passes
             else:
                 x = block(x, x0)
 
