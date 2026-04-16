@@ -634,19 +634,24 @@ class Block(nn.Module):
         self.mlp = MLP(dim, mlp_mult)
         self.attn_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
         self.mlp_scale = nn.Parameter(torch.ones(dim, dtype=torch.float32))
-        self.resid_mix = nn.Parameter(torch.stack((torch.ones(dim), torch.zeros(dim))).float())
-        self.use_gate = False
-        self.gate = nn.Linear(dim, 1, bias=False)
+        self.attn_gate = nn.Linear(dim, 1, bias=False)
+        self.mlp_gate = nn.Linear(dim, 1, bias=False)
+
+        nn.init.zeros_(self.attn_gate.weight)
+        nn.init.zeros_(self.mlp_gate.weight)
 
     def forward(self, x: Tensor, x0: Tensor) -> Tensor:
-        if self.use_gate:
-            gate = torch.sigmoid(self.gate(x))  # (B, T, 1)
-            x = gate * x + (1 - gate) * x0
-
         attn_out = self.attn(self.attn_norm(x))
-        x = x + self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
+        attn_gate = torch.sigmoid(self.attn_gate(x))  # (B, T, 1)
+        x = x + attn_gate * (
+            self.attn_scale.to(dtype=x.dtype)[None, None, :] * attn_out
+        )
+        mlp_out = self.mlp(self.mlp_norm(x))
+        mlp_gate = torch.sigmoid(self.mlp_gate(x))  # (B, T, 1)
 
-        x = x + self.mlp_scale.to(dtype=x.dtype)[None, None, :] * self.mlp(self.mlp_norm(x))
+        x = x + mlp_gate * (
+            self.mlp_scale.to(dtype=x.dtype)[None, None, :] * mlp_out
+        )
 
         return x
 
